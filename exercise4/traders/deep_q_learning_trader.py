@@ -100,15 +100,12 @@ class DeepQLearningTrader(ITrader):
         assert stock_market_data is not None
         assert stock_market_data.get_companies() == [Company.A, Company.B]
 
-
-
-        # TODO Compute the current state
-        # State is comparision of stock to last one. 1 means the stock increased
-        # and 0 means it decreased for each company
-
+        #Compute current State
         state_now = State(stock_market_data, self.expert_a, self.expert_b, self.last_state)
         if (self.last_state == None):
             state_now.prev_state = state_now
+
+        #Create actions and let probability decide
         rand_action = Action.create_random_action()
         model_action = self.action_by_model(state_now)
         action = np.random.choice([rand_action, model_action], 1, p=[self.epsilon, 1-self.epsilon])[0]
@@ -116,14 +113,12 @@ class DeepQLearningTrader(ITrader):
         if(self.epsilon > self.epsilon_min):
             self.epsilon -= self.epsilon_decay
 
-        #just for performing
+        #if training is deactivated
         if not self.train_while_trading:
             self.last_state = state_now
-            #if(model_action.type_b != Vote.HOLD or model_action.type_a != Vote.BUY):
-               #print(" ")
             return model_action.create_order_list(portfolio, stock_market_data)
 
-        #for the first run
+        #for the first call of trade()
         if(self.last_state == None):
             self.epsilon = 1.0
             self.last_state = state_now
@@ -131,10 +126,12 @@ class DeepQLearningTrader(ITrader):
             self.last_action = action
             return action.create_order_list(portfolio, stock_market_data)
 
+        #calculate reward and create tuple for memory
         reward = self.create_reward(portfolio, stock_market_data, state_now)
         memory_unit = (self.last_state, self.last_action, reward, state_now)
         self.memory.append(memory_unit)
 
+        #train if there is enough experience
         if len(self.memory) > self.min_size_of_memory_before_training:
             #start training with random batch
             batch = random.sample(self.memory, self.batch_size)
@@ -148,16 +145,11 @@ class DeepQLearningTrader(ITrader):
 
             self.model.train_on_batch(x, y)
 
+        #save old values for next run
         self.last_state = state_now
         self.last_portfolio_value = portfolio.get_value(stock_market_data)
         self.last_action = action
         return action.create_order_list(portfolio, stock_market_data)
-
-        # TODO Store state as experience (memory) and train the neural network only if trade() was called before at least once
-
-        # TODO Create actions for current state and decrease epsilon for fewer random actions
-
-        # TODO Save created state, actions and portfolio value for the next call of trade()
 
     def create_reward(self, portfolio:Portfolio, stock_market_data:StockMarketData, state_now:State):
         new_portfolio_value = portfolio.get_value(stock_market_data)
